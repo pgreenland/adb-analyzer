@@ -105,5 +105,6 @@ Then, open the newly created solution file located here: `build\adb_analyzer.sln
 | `cmd` | string | Command code issued by host |
 | `reg` | int | Register index issues by host |
 | `data` | bytes | Data transferred to/from device register depending on command |
+| `svrreq` | bool | Service request placed in either command or data stop bit |
 
 This is the decoded ADB command and data frames.

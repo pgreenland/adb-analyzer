@@ -16,6 +16,7 @@
 
 /* mType bit values */
 #define DATA_BYTE_FLAG ( 1 << 0 )
+#define SERVICE_REQUEST_FLAG ( 1 << 1 )
 
 class ADBAnalyzerSettings;
 
@@ -147,10 +148,13 @@ class ADBAnalyzer : public Analyzer2
 		U64 mADBStopToStartMin, mADBStopToStartMax;
 
 		/* Read byte from stream */
-		bool ReadByte(bool bHostToDevice, bool bIsData, U8 *pbyOutput);
+		bool ReadByte(bool bHostToDevice, U8 *pbyOutput);
 
-		/* Output bytes for export / display in table */
-		void OutputBytesForTableAndExport(U8 byCommand, U8 *pabyData, U8 uiDataLen, U64 uiStart, U64 uiEnd);
+		/* Output byte for display on waveform / export */
+		void OutputByteForDisplayAndExport(bool bIsData, bool bServiceRequested, U8 byData, U64 uiStart, U64 uiEnd);
+
+		/* Output bytes for display in table */
+		void OutputBytesForTable(U8 byCommand, U8 *pabyData, U8 uiDataLen, bool bServiceRequested, U64 uiStart, U64 uiEnd);
 
 		/* Packet id/index */
 		U64 mPacketID;

@@ -35,7 +35,13 @@ void ADBAnalyzerResults::GenerateExportFile(const char* file, DisplayBase displa
 	U64 num_frames = GetNumFrames();
 	U64 last_packet_id = UINT64_MAX;
 
-	ss << "Time [s],Addr,Cmd,Reg,Data" << std::endl;
+	ss << "Time [s],Addr,Cmd,Reg,Data0,Data1,Data2,Data3,Data4,Data5,Data6,Data7,SvcReq" << std::endl;
+
+	/* Reset data count, such that we always output 8 bytes */
+	U8 data_count = 0;
+
+	/* Assume neither command nor data contains a service request */
+	bool service_request = false;
 
 	for (U32 i = 0; i < num_frames; i++)
 	{
@@ -43,8 +49,12 @@ void ADBAnalyzerResults::GenerateExportFile(const char* file, DisplayBase displa
 
 		if (last_packet_id != frame.mData2)
 		{
-			/* Start of new packet, end line and output timestamp */
-			if (i > 0) ss << std::endl;
+			/* Start of new packet, output empty columns, final service request status and end line */
+			if (i > 0)
+			{
+				for (int j = data_count; j < 8; j++) ss << ",";
+				ss << "," << service_request << std::endl;
+			}
 
 			/* Output time string */
 			char time_str[ 128 ];
@@ -64,6 +74,12 @@ void ADBAnalyzerResults::GenerateExportFile(const char* file, DisplayBase displa
 			AnalyzerHelpers::GetNumberString(uiReg, display_base, 8, number_str, 128);
 			ss << "," << number_str;
 
+			/* Reset data count */
+			data_count = 0;
+
+			/* Reset service request flag */
+			service_request = false;
+
 			/* Update last ID */
 			last_packet_id = frame.mData2;
 		}
@@ -74,10 +90,20 @@ void ADBAnalyzerResults::GenerateExportFile(const char* file, DisplayBase displa
 			char number_str[ 128 ];
 			AnalyzerHelpers::GetNumberString(frame.mData1, display_base, 8, number_str, 128);
 			ss << "," << number_str;
+
+			/* Count byte */
+			data_count++;
 		}
 
-		/* Ensure final new line is output on last frame */
-		if (i == (num_frames - 1)) ss << std::endl;
+		/* Or in service request status */
+		service_request |= (0 != (frame.mFlags & SERVICE_REQUEST_FLAG));
+
+		/* Ensure final empty columns, service request status and end line is output on last frame */
+		if (i == (num_frames - 1))
+		{
+			for (int j = data_count; j < 8; j++) ss << ",";
+			ss << "," << service_request << std::endl;
+		}
 
 		/* Output to file and reset buffer */
 		AnalyzerHelpers::AppendToFile((U8*)ss.str().c_str(), ss.str().length(), f);

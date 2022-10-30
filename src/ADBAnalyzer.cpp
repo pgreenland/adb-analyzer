@@ -111,7 +111,13 @@ void ADBAnalyzer::WorkerThread()
 	U8 mCommand;
 	bool bCmdIsListen;
 	U8 mData[8];
+	U64 mDataStart[8];
+	U64 mDataEnd[8];
 	U8 mDataLen;
+
+	/* Service request flags */
+	bool service_request_cmd;
+	bool service_request_data;
 
 	for (;;)
 	{
@@ -161,9 +167,6 @@ void ADBAnalyzer::WorkerThread()
 
 					/* Start new packet */
 					mResults->CancelPacketAndStartNewPacket();
-
-					/* Reset data length */
-					mDataLen = 0;
 				}
 				break;
 			}
@@ -188,7 +191,7 @@ void ADBAnalyzer::WorkerThread()
 				command_start_location = curr_edge_location;
 
 				/* Read command byte followed by stop */
-				if (ReadByte(true, false, &mCommand))
+				if (ReadByte(true, &mCommand))
 				{
 					/* Byte read, flag if the command just send was a listen */
 					bCmdIsListen = (Listen == ((mCommand >> mADBCommandCodeShift) & mADBCommandCodeMask));
@@ -208,21 +211,18 @@ void ADBAnalyzer::WorkerThread()
 						mNextState = StopToStart;
 
 						/* Check for service request signal */
-						if (	(edge_period >= mServiceRequestMin)
-							 && (edge_period <= mServiceRequestMax)
-						   )
-						{
-							/* Service request detected, flag edge */
-							mResults->AddMarker(next_edge_location, AnalyzerResults::UpArrow, mSettings->mInputChannel);
-						}
-						else
-						{
-							/* No service request, flag stop */
-							mResults->AddMarker(next_edge_location, AnalyzerResults::Stop, mSettings->mInputChannel);
-						}
+						service_request_cmd = (		(edge_period >= mServiceRequestMin)
+												 && (edge_period <= mServiceRequestMax)
+											  );
+
+						/* Flag edge with arrow for service request, or stop otherwise */
+						mResults->AddMarker(next_edge_location, service_request_cmd ? AnalyzerResults::UpArrow : AnalyzerResults::Stop, mSettings->mInputChannel);
 
 						/* Capture end location */
 						command_end_location = curr_edge_location;
+
+						/* Output data byte */
+						OutputByteForDisplayAndExport(false, service_request_cmd, mCommand, command_start_location, command_end_location);
 					}
 				}
 				break;
@@ -235,11 +235,14 @@ void ADBAnalyzer::WorkerThread()
 				{
 					/* Stop to start time within spec, advance state */
 					mNextState = DataStartLow;
+
+					/* Reset data length */
+					mDataLen = 0;
 				}
 				else
 				{
-					/* Stop to start of spec, output command and reset */
-					OutputBytesForTableAndExport(mCommand, mData, mDataLen, command_start_location, command_end_location);
+					/* Stop to start out of spec, output command and reset */
+					OutputBytesForTable(mCommand, NULL, 0, service_request_cmd, command_start_location, command_end_location);
 				}
 				break;
 			}
@@ -281,11 +284,17 @@ void ADBAnalyzer::WorkerThread()
 					curr_edge_val = (BIT_HIGH == mADB->GetBitState());
 					next_edge_location = mADB->GetSampleOfNextEdge();
 
+					/* Capture start position for byte */
+					mDataStart[i] = curr_edge_location;
+
 					/* Read byte send from host if command is listen, otherwise from device */
-					if (ReadByte(bCmdIsListen, true, &mData[i]))
+					if (ReadByte(bCmdIsListen, &mData[i]))
 					{
 						/* Byte read, count it */
 						mDataLen++;
+
+						/* Capture end position for byte */
+						mDataEnd[i] = mADB->GetSampleNumber();
 					}
 					else
 					{
@@ -305,21 +314,21 @@ void ADBAnalyzer::WorkerThread()
 					   )
 					{
 						/* Stop within spec, check for service request signal */
-						if (	(edge_period >= mServiceRequestMin)
-							 && (edge_period <= mServiceRequestMax)
-						   )
+						service_request_data = (	(edge_period >= mServiceRequestMin)
+												 && (edge_period <= mServiceRequestMax)
+											   );
+
+						/* Flag edge with arrow for service request, or stop otherwise */
+						mResults->AddMarker(next_edge_location, service_request_data ? AnalyzerResults::UpArrow : AnalyzerResults::Stop, mSettings->mInputChannel);
+
+						/* Output data bytes */
+						for (int i = 0; i < mDataLen; i++)
 						{
-							/* Service request detected, flag edge */
-							mResults->AddMarker(next_edge_location, AnalyzerResults::UpArrow, mSettings->mInputChannel);
-						}
-						else
-						{
-							/* No service request, flag stop */
-							mResults->AddMarker(next_edge_location, AnalyzerResults::Stop, mSettings->mInputChannel);
+							OutputByteForDisplayAndExport(true, ((i == (mDataLen - 1)) && service_request_data), mData[i], mDataStart[i], mDataEnd[i]);
 						}
 
 						/* Output command and data */
-						OutputBytesForTableAndExport(mCommand, mData, mDataLen, command_start_location, curr_edge_location);
+						OutputBytesForTable(mCommand, mData, mDataLen, service_request_cmd | service_request_data, command_start_location, curr_edge_location);
 					}
 				}
 				break;
@@ -342,19 +351,13 @@ void ADBAnalyzer::WorkerThread()
 	}
 }
 
-bool ADBAnalyzer::ReadByte(bool bHostToDevice, bool bIsData, U8 *pbyOutput)
+bool ADBAnalyzer::ReadByte(bool bHostToDevice, U8 *pbyOutput)
 {
 	bool bSuccess;
 	U8 byData;
 
-	/* Frame to display byte */
-	Frame frame;
-
 	/* Assume failure */
 	bSuccess = false;
-
-	/* Store start location */
-	frame.mStartingSampleInclusive = mADB->GetSampleNumber();
 
 	/* Iterate over bits */
 	for (int i = 0; i < 8; i++)
@@ -431,24 +434,28 @@ bool ADBAnalyzer::ReadByte(bool bHostToDevice, bool bIsData, U8 *pbyOutput)
 		byData |= uiBit;
 	}
 
-	if (bSuccess)
-	{
-		/* Display byte */
-		frame.mEndingSampleInclusive = mADB->GetSampleNumber();
-		frame.mData1 = byData; /* data byte */
-		frame.mData2 = mPacketID; /* index of packet it goes with */
-		frame.mFlags = 0;
-		if (bIsData) frame.mFlags |= DATA_BYTE_FLAG;
-		mResults->AddFrame(frame);
-
-		/* Output byte */
-		*pbyOutput = byData;
-	}
+	/* Output byte */
+	*pbyOutput = byData;
 
 	return bSuccess;
 }
 
-void ADBAnalyzer::OutputBytesForTableAndExport(U8 byCommand, U8 *pabyData, U8 uiDataLen, U64 uiStart, U64 uiEnd)
+void ADBAnalyzer::OutputByteForDisplayAndExport(bool bIsData, bool bServiceRequested, U8 byData, U64 uiStart, U64 uiEnd)
+{
+	Frame frame;
+
+	/* Display byte */
+	frame.mStartingSampleInclusive = uiStart;
+	frame.mEndingSampleInclusive = uiEnd;
+	frame.mData1 = byData; /* data byte */
+	frame.mData2 = mPacketID; /* index of packet it goes with */
+	frame.mFlags = 0;
+	if (bIsData) frame.mFlags |= DATA_BYTE_FLAG;
+	if (bServiceRequested) frame.mFlags |= SERVICE_REQUEST_FLAG;
+	mResults->AddFrame(frame);
+}
+
+void ADBAnalyzer::OutputBytesForTable(U8 byCommand, U8 *pabyData, U8 uiDataLen, bool bServiceRequested, U64 uiStart, U64 uiEnd)
 {
 	/* Decode command */
 	U8 uiAddr = ((byCommand >> mADBCommandAddrShift) & mADBCommandAddrMask);
@@ -461,6 +468,7 @@ void ADBAnalyzer::OutputBytesForTableAndExport(U8 byCommand, U8 *pabyData, U8 ui
 	frame_v2.AddString("cmd", CmdCodeRegToString(eCode, uiReg));
 	frame_v2.AddByteArray("reg", &uiReg, sizeof(uiReg));
 	frame_v2.AddByteArray("data", pabyData, uiDataLen);
+	frame_v2.AddBoolean("svcreq", bServiceRequested);
 	mResults->AddFrameV2(frame_v2, "adb", uiStart, uiEnd);
 	mResults->CommitResults();
 
@@ -473,11 +481,11 @@ void ADBAnalyzer::OutputBytesForTableAndExport(U8 byCommand, U8 *pabyData, U8 ui
 
 const char* ADBAnalyzer::CmdCodeRegToString(U8 uiCmdCode, U8 uiReg)
 {
-	if (uiCmdCode == SendResetOrFlush && uiReg == 0) return "SendReset";
-	if (uiCmdCode == SendResetOrFlush && uiReg == 1) return "Flush";
-	if (uiCmdCode == Listen) return "Listen";
-	if (uiCmdCode == Talk) return "Talk";
-	return "Reserved";
+	if (uiCmdCode == SendResetOrFlush && uiReg == 0) return "send_reset";
+	if (uiCmdCode == SendResetOrFlush && uiReg == 1) return "flush";
+	if (uiCmdCode == Listen) return "listen";
+	if (uiCmdCode == Talk) return "talk";
+	return "reserved";
 }
 
 U32 ADBAnalyzer::GenerateSimulationData(U64 newest_sample_requested, U32 sample_rate,
