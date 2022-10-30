@@ -191,7 +191,7 @@ void ADBAnalyzer::WorkerThread()
 				if (ReadByte(true, false, &mCommand))
 				{
 					/* Byte read, flag if the command just send was a listen */
-					bCmdIsListen = (Listen == ((mCommand & mADBCommandCodeMask) >> mADBCommandCodeShift));
+					bCmdIsListen = (Listen == ((mCommand >> mADBCommandCodeShift) & mADBCommandCodeMask));
 
 					/* Update current / next edges and calculate period */
 					curr_edge_location = mADB->GetSampleNumber();
@@ -239,7 +239,7 @@ void ADBAnalyzer::WorkerThread()
 				else
 				{
 					/* Stop to start of spec, output command and reset */
-					OutputBytesForTableAndExport(mCommand, bCmdIsListen, mData, mDataLen, command_start_location, command_end_location);
+					OutputBytesForTableAndExport(mCommand, mData, mDataLen, command_start_location, command_end_location);
 				}
 				break;
 			}
@@ -319,7 +319,7 @@ void ADBAnalyzer::WorkerThread()
 						}
 
 						/* Output command and data */
-						OutputBytesForTableAndExport(mCommand, bCmdIsListen, mData, mDataLen, command_start_location, curr_edge_location);
+						OutputBytesForTableAndExport(mCommand, mData, mDataLen, command_start_location, curr_edge_location);
 					}
 				}
 				break;
@@ -448,12 +448,18 @@ bool ADBAnalyzer::ReadByte(bool bHostToDevice, bool bIsData, U8 *pbyOutput)
 	return bSuccess;
 }
 
-void ADBAnalyzer::OutputBytesForTableAndExport(U8 byCommand, bool bHostToDevice, U8 *pabyData, U8 uiDataLen, U64 uiStart, U64 uiEnd)
+void ADBAnalyzer::OutputBytesForTableAndExport(U8 byCommand, U8 *pabyData, U8 uiDataLen, U64 uiStart, U64 uiEnd)
 {
+	/* Decode command */
+	U8 uiAddr = ((byCommand >> mADBCommandAddrShift) & mADBCommandAddrMask);
+	ADBCommand eCode = ADBCommand((byCommand >> mADBCommandCodeShift) & mADBCommandCodeMask);
+	U8 uiReg = ((byCommand >> mADBCommandRegShift) & mADBCommandRegMask);
+
 	/* Output bytes for export / table display */
 	FrameV2 frame_v2;
-	frame_v2.AddBoolean("hostToDevice", bHostToDevice);
-	frame_v2.AddByteArray("cmd", &byCommand, sizeof(byCommand));
+	frame_v2.AddByteArray("addr", &uiAddr, sizeof(uiAddr));
+	frame_v2.AddString("cmd", CmdCodeRegToString(eCode, uiReg));
+	frame_v2.AddByteArray("reg", &uiReg, sizeof(uiReg));
 	frame_v2.AddByteArray("data", pabyData, uiDataLen);
 	mResults->AddFrameV2(frame_v2, "adb", uiStart, uiEnd);
 	mResults->CommitResults();
@@ -463,6 +469,15 @@ void ADBAnalyzer::OutputBytesForTableAndExport(U8 byCommand, bool bHostToDevice,
 
 	/* Increment packet ID */
 	mPacketID++;
+}
+
+const char* ADBAnalyzer::CmdCodeRegToString(U8 uiCmdCode, U8 uiReg)
+{
+	if (uiCmdCode == SendResetOrFlush && uiReg == 0) return "SendReset";
+	if (uiCmdCode == SendResetOrFlush && uiReg == 1) return "Flush";
+	if (uiCmdCode == Listen) return "Listen";
+	if (uiCmdCode == Talk) return "Talk";
+	return "Reserved";
 }
 
 U32 ADBAnalyzer::GenerateSimulationData(U64 newest_sample_requested, U32 sample_rate,

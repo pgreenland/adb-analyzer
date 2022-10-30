@@ -101,8 +101,9 @@ Then, open the newly created solution file located here: `build\adb_analyzer.sln
 
 | Property | Type | Description |
 | :--- | :--- | :--- |
-| `hostToDevice` | bool | Data direction is host to device |
-| `cmd` | byte | Command issued by host |
-| `data` | bytes | Data transferred to/from device register |
+| `addr` | int | Address of device issued by host |
+| `cmd` | string | Command code issued by host |
+| `reg` | int | Register index issues by host |
+| `data` | bytes | Data transferred to/from device register depending on command |
 
 This is the decoded ADB command and data frames.

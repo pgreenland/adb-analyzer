@@ -68,8 +68,15 @@ class ADBAnalyzer : public Analyzer2
 		virtual const char* GetAnalyzerName() const;
 
 		/* Constant for command mask / shift */
-		static const U8 mADBCommandCodeMask = 0x0c;
+		static const U8 mADBCommandAddrShift = 4;
 		static const U8 mADBCommandCodeShift = 2;
+		static const U8 mADBCommandRegShift = 0;
+		static const U8 mADBCommandAddrMask = 0x0f;
+		static const U8 mADBCommandCodeMask = 0x03;
+		static const U8 mADBCommandRegMask = 0x03;
+
+		/* Convert command code and register to string */
+		static const char* CmdCodeRegToString(U8 uiCmdCode, U8 uiReg);
 
 #pragma warning(push)
 #pragma warning(disable : 4251)	// warning C4251: 'ADBAnalyzer::<...>' : class <...> needs to have dll-interface to be used by
@@ -143,7 +150,7 @@ class ADBAnalyzer : public Analyzer2
 		bool ReadByte(bool bHostToDevice, bool bIsData, U8 *pbyOutput);
 
 		/* Output bytes for export / display in table */
-		void OutputBytesForTableAndExport(U8 byCommand, bool bHostToDevice, U8 *pabyData, U8 uiDataLen, U64 uiStart, U64 uiEnd);
+		void OutputBytesForTableAndExport(U8 byCommand, U8 *pabyData, U8 uiDataLen, U64 uiStart, U64 uiEnd);
 
 		/* Packet id/index */
 		U64 mPacketID;

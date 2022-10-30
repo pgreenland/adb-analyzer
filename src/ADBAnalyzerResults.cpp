@@ -35,7 +35,7 @@ void ADBAnalyzerResults::GenerateExportFile(const char* file, DisplayBase displa
 	U64 num_frames = GetNumFrames();
 	U64 last_packet_id = UINT64_MAX;
 
-	ss << "Time [s],Command,HostToDevice,Data" << std::endl;
+	ss << "Time [s],Addr,Cmd,Reg,Data" << std::endl;
 
 	for (U32 i = 0; i < num_frames; i++)
 	{
@@ -51,22 +51,18 @@ void ADBAnalyzerResults::GenerateExportFile(const char* file, DisplayBase displa
 			AnalyzerHelpers::GetTimeString(frame.mStartingSampleInclusive, trigger_sample, sample_rate, time_str, 128);
 			ss << time_str;
 
-			/* Output command byte */
-			char number_str[ 128 ];
-			AnalyzerHelpers::GetNumberString(frame.mData1, display_base, 8, number_str, 128);
-			ss << "," << number_str;
+			/* Decode command */
+			U8 uiAddr = ((frame.mData1 >> ADBAnalyzer::mADBCommandAddrShift) & ADBAnalyzer::mADBCommandAddrMask);
+			ADBCommand eCode = ADBCommand((frame.mData1 >> ADBAnalyzer::mADBCommandCodeShift) & ADBAnalyzer::mADBCommandCodeMask);
+			U8 uiReg = ((frame.mData1 >> ADBAnalyzer::mADBCommandRegShift) & ADBAnalyzer::mADBCommandRegMask);
 
-			/* Output data direction, by reading command bits from command byte */
-			if (Listen == (frame.mData1 & ADBAnalyzer::mADBCommandCodeMask) >> ADBAnalyzer::mADBCommandCodeShift)
-			{
-				/* Command is listen, meaning host intends to send data to device */
-				ss << ",true";
-			}
-			else
-			{
-				/* Command is not listen, meaning there is no data, or device should report back to host */
-				ss << ",false";
-			}
+			/* Output command byte fields */
+			char number_str[ 128 ];
+			AnalyzerHelpers::GetNumberString(uiAddr, display_base, 8, number_str, 128);
+			ss << "," << number_str;
+			ss << "," << ADBAnalyzer::CmdCodeRegToString(eCode, uiReg);
+			AnalyzerHelpers::GetNumberString(uiReg, display_base, 8, number_str, 128);
+			ss << "," << number_str;
 
 			/* Update last ID */
 			last_packet_id = frame.mData2;
