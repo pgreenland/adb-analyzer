@@ -93,7 +93,7 @@ class ADBAnalyzer : public Analyzer2
 		const U32 mADBBitRate = mUSPerSec / mADBBitCellTime;
 
 		/* ADB allowable timing errors for host / device as a percentage of nominal timings */
-		const U32 mADBPctErrorHost = 3; /* +/- percent */
+		const U32 mADBPctErrorHost = 10; /* +/- percent */
 		const U32 mADBPctErrorDevice = 30; /* +/- percent */
 
 		/*
@@ -105,7 +105,7 @@ class ADBAnalyzer : public Analyzer2
 		const U32 mADBLowTimePctError = 5; /* +/- percent */
 
 		/* Host attention pulse time */
-		const U32 mADBAttentionTime = 800; /* us subject to host error */
+		const U32 mADBAttentionTime = 750; /* us subject to host error */
 
 		/* Host sync pulse time */
 		const U32 mADBSyncTime = 65; /* us subject to host error */
