@@ -2,6 +2,7 @@
 #include <sstream>
 #include <ios>
 #include <algorithm>
+#include <iostream>
 #pragma warning(pop)
 
 #include "ADBAnalyzer.h"
@@ -139,11 +140,15 @@ void ADBAnalyzer::WorkerThread()
 		/* Data start bit location */
 		U64 data_start_location;
 
+std::cout << "Curr edge: " << curr_edge_val << ", period: " << edge_period << "\n";
+
 		/* Check for global reset (low for minimum period) */
 		if (!curr_edge_val && (edge_period >= mGlobalReset))
 		{
 			/* Global reset asserted, reset state machine */
 			mState = Attention;
+
+std::cout << "GlobalReset\n";
 
 			/* Add marker */
 			mResults->AddMarker(curr_edge_location, AnalyzerResults::Square, mSettings->mInputChannel);
@@ -162,6 +167,7 @@ void ADBAnalyzer::WorkerThread()
 					 && (edge_period <= mAttentionMax)
 				   )
 				{
+					std::cout << "Attention -> Sync\n";
 					/* Attention within spec, advance state */
 					mNextState = Sync;
 
@@ -177,6 +183,8 @@ void ADBAnalyzer::WorkerThread()
 					 && (edge_period <= mSyncMax)
 				   )
 				{
+					std::cout << "Sync -> CommandStop\n";
+
 					/* Sync within spec, advance state */
 					mNextState = CommandStop;
 
@@ -210,6 +218,8 @@ void ADBAnalyzer::WorkerThread()
 						/* Stop within spec, advance state */
 						mNextState = StopToStart;
 
+std::cout << "CommandStop -> StopToStart\n";
+
 						/* Check for service request signal */
 						service_request_cmd = (		(edge_period >= mServiceRequestMin)
 												 && (edge_period <= mServiceRequestMax)
@@ -236,6 +246,8 @@ void ADBAnalyzer::WorkerThread()
 					/* Stop to start time within spec, advance state */
 					mNextState = DataStartLow;
 
+std::cout << "StopToStart -> DataStartLow\n";
+
 					/* Reset data length */
 					mDataLen = 0;
 				}
@@ -255,6 +267,8 @@ void ADBAnalyzer::WorkerThread()
 					/* Start bit low period within spec, advance state */
 					mNextState = DataStartHigh;
 
+std::cout << "DataStartLow -> DataStartHigh\n";
+
 					/* Capture location for data start */
 					data_start_location = curr_edge_location;
 				}
@@ -268,6 +282,8 @@ void ADBAnalyzer::WorkerThread()
 				{
 					/* Start bit high period within spec, advance state */
 					mNextState = DataStop;
+
+std::cout << "DataStartHigh -> DataStop\n";
 
 					/* Add marker */
 					mResults->AddMarker(data_start_location, AnalyzerResults::Start, mSettings->mInputChannel);
@@ -302,6 +318,8 @@ void ADBAnalyzer::WorkerThread()
 						break;
 					}
 				}
+
+std::cout << "Data len: " << mDataLen << "\n";
 
 				if (mDataLen >= 2)
 				{
